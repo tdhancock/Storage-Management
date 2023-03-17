@@ -1,0 +1,14 @@
+
+-p, valor --path, el nombre de ruta relativo o absoluto de un archivo o directorio. El valor predeterminado es -p.
+
+-s, --sort alfa | extender | tamaño
+    alfa ordena alfabéticamente (ascendente)
+    exten ordena por extensión alfabéticamente (ascendente)
+    tamaño ordena por tamaño (descendente)
+    El valor predeterminado es sin clasificar
+
+-m, --metric, los tamaños se muestran como KB, MB, GB y TB en lugar de bytes.
+
+-t, --threshold min, solo muestra archivos y carpetas de al menos el tamaño mínimo. min es el número de miles de millones. min puede ser un número entero como 20 o una fracción decimal como 0,25. El valor predeterminado es -t 1.
+
+-h, --help imprime esta pantalla de uso. Ignora todos los demás argumentos.
