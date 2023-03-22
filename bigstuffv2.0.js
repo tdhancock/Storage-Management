@@ -19,69 +19,61 @@ function convertBytes(bytes) {
   return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + sizes[i]
 }
 
-function getSize(item) {
-  const stat = fs.statSync(item)
-  if (stat.isDirectory()) {
-    let children = fs.readdirSync(item)
-    for (child in children) {
-      let childStat = fs.statSync(item + '/' + children[child])
-      if (childStat.isDirectory()) getSize(item + '/' + children[child])
-      else {
-        dirSize += childStat.size
-      }
-    }
-    return dirSize
-  } else {
-    return stat.size
-  }
-}
-
-dirSize = 0
-
-function printLine(path, tabs, metric, threshold) {
-  let stat = fs.statSync(`${path}`)
-  if (stat.isDirectory()) {
-    if (getSize(path) >= threshold * 1000000000) {
-      if (metric) {
-        console.log(
-          chalk.green('\n' + '\t'.repeat(tabs) + Path.resolve(path) + '\\ ')
-        )
-      } else
-        console.log(
-          chalk.green('\n' + '\t'.repeat(tabs) + Path.resolve(path) + '\\ ')
-        )
-      dirSize = 0
-    }
-  }
+function printLine(path, metric, threshold) {
+  let stat = fs.statSync(path)
   if (stat.isFile()) {
     if (stat.size >= threshold * 1000000000) {
       if (metric) {
         console.log(
-          chalk.cyanBright(
-            '\n' +
-              '\t'.repeat(tabs) +
-              Path.resolve(path) +
-              ' ' +
-              convertBytes(stat.size)
-          )
+          '\n' +
+            chalk.red(Path.resolve(path).split('\\').slice(0, -1).join('\\')) +
+            chalk.cyanBright('\\') +
+            chalk.cyanBright(Path.resolve(path).split('\\').pop()) +
+            ' ' +
+            convertBytes(stat.size)
         )
       } else
         console.log(
           chalk.cyanBright(
             '\n' +
-              '\t'.repeat(tabs) +
-              Path.resolve(path) +
+              chalk.red(
+                Path.resolve(path).split('\\').slice(0, -1).join('\\')
+              ) +
+              chalk.cyanBright('\\') +
+              chalk.cyanBright(Path.resolve(path).split('\\').pop()) +
               ' ' +
               stat.size.toLocaleString()
           )
         )
-      dirSize = 0
     }
   }
 }
 
+let position = 0
+function tick() {
+  const spinningChars = `|/-\\`
+  process.stdout.write(`\b${spinningChars[position % spinningChars.length]}`)
+  position += 1
+}
+
 async function startGlob(path, flags) {
-  const files = await glob(`${path}/**`, { ignore: 'node_modules/**' })
+  const files = []
+  for (const file of glob.globIterateSync(`${path}/**`, {
+    ignore: 'node_modules/**',
+  })) {
+    try {
+      stat = fs.statSync(file)
+      if (
+        file != '' &&
+        !stat.isDirectory() &&
+        stat.size >= flags[3] * 1000000000
+      )
+        files.push(file)
+    } catch (err) {
+      continue
+    }
+    tick()
+  }
   handlePrint(files, flags, path)
 }
 
@@ -91,50 +83,34 @@ function handlePrint(list, flags, path) {
   if (flags[1] == 'alpha' || flags[1] == null) {
     for (item in list) {
       if (list[item] == '') {
-        printLine(
-          path + list[item],
-          0,
-          flags[2],
-          flags[3]
-        )
+        printLine(path + list[item], flags[2], flags[3])
       } else {
-        printLine(
-          list[item],
-          list[item].split('\\').length,
-          flags[2],
-          flags[3]
-        )
+        printLine(list[item], flags[2], flags[3])
       }
     }
     console.log('\n')
   } else if (flags[1] == 'exten') {
-    console.log(
-      '\nFiles in order of extension, alphabetical. Directories excluded because they have no extension'
-    )
     for (item in list) {
       if (list[item] == '') stat = fs.statSync(path)
       else stat = fs.statSync(list[item])
       if (stat.isFile()) {
         if (list[item] == '') {
-          printLine(path + list[item], 0, flags[2], flags[3])
+          printLine(path + list[item], flags[2], flags[3])
         } else {
-          printLine(list[item], 0, flags[2], flags[3])
+          printLine(list[item], flags[2], flags[3])
         }
       }
     }
     console.log('\n')
   } else if (flags[1] == 'size') {
-    console.log(
-      "\nFiles in order of size, largest to smallest. Directories excluded because with globbing we aren't doing size"
-    )
     for (item in list) {
       if (list[item] == '') stat = fs.statSync(path)
       else stat = fs.statSync(list[item])
       if (stat.isFile()) {
         if (list[item] == '') {
-          printLine(path + list[item], 0, flags[2], flags[3])
+          printLine(path + list[item], flags[2], flags[3])
         } else {
-          printLine(list[item], 0, flags[2], flags[3])
+          printLine(list[item], flags[2], flags[3])
         }
       }
     }
@@ -156,15 +132,7 @@ function handleSort(list, type) {
     })
   } else if (type == 'size') {
     return list.sort(function (a, b) {
-      if (a == '') statA = fs.statSync('./')
-      else statA = fs.statSync(a)
-      if (b == '') statB = fs.statSync('./')
-      else statB = fs.statSync(b)
-      if (statA.isFile() && statB.isFile()) {
-        let sizeA = fs.statSync(a).size
-        let sizeB = fs.statSync(b).size
-        return sizeB - sizeA
-      }
+      return fs.statSync(b).size - fs.statSync(a).size
     })
   } else return list.sort()
 }
@@ -211,7 +179,7 @@ function usage() {
 
 function processArgs(args) {
   //'path', 'sort', 'metric', 'threshold', 'blocksize'
-  let processed = ['./', null, null, -1, null]
+  let processed = ['./', null, null, .1, null]
   let currItem
   for (let i = 0; i < args.length; i++) {
     currItem = args[i]
@@ -225,9 +193,6 @@ function processArgs(args) {
 
     if (currItem == '-t' || currItem == '--threshold') processed[3] = nextItem
 
-    //Blocksize, deprecated
-    // if (currItem == '-b' || currItem == '--blocksize') processed[4] = true
-
     if (currItem == '-h' || currItem == '--help') {
       usage()
       return false
@@ -237,8 +202,10 @@ function processArgs(args) {
 }
 
 function main() {
+  console.time('time')
   let processed = processArgs(process.argv)
   if (processed != false) startGlob(processed[0], processed)
+  console.timeEnd('time')
 }
 
 main()
